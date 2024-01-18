@@ -1,0 +1,440 @@
+---
+title: "Prediction of 2025 Canadian Federal Election"
+author: "Group 188: Yixuan Diao, Maureen Jin, Xinyi Zhao, Ziyue Li"
+subtitle: "STA304 - Fall 2023 - Assignment 2"
+date: "November 23th, 2023"
+output:
+  pdf_document: default
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+library(openintro)
+library(tidyverse)
+library(mice)
+library(lme4)
+library(broom)
+library(reshape2)
+```
+
+## Introduction
+
+### Background & Context:
+As Canada approaches the threshold of its next federal election in 2025, the public anticipation and intrigue surrounding the election intensify. The effort to predict the outcome of this upcoming democratic event encapsulates a convergence of multifaceted elements ranging from shifting political dynamics, evolving social attitudes, economic trends, to the influence of emergent issues. Within this context, the pursuit of forecasting the 2025 Canadian federal election stands as a challenging yet captivating undertaking.
+
+The history of Federal Voting Rights in Canada can be traced back to 1867. In that year, when Canada was formed, only men who were 21 years of age or older and who owned property were able to vote in federal elections. Additionally, those excluded from voting provincially were also ineligible to vote federally. Throughout the complex political and social changes, in 1982, the Canadian Charter of Rights and Freedoms affirmed the right of every Canadian citizen over 18 years old to vote and to stand as a candidate [1]. Canada is geographically divided into constituencies, which are referred to as electoral districts or ridings. There are 338 ridings spread  throughout the entire nation, including multiple ridings in each of the ten provinces and three territories. Each riding corresponds to one seat in the House of Commons, the elected assembly of the Parliament of Canada [2].
+
+In Canada, the electoral system follows a “single-member plurality” format, also known as “first-past-the-post,” where the candidate securing the highest number of votes wins the election in each riding. The selected candidate in each riding is called the Member of Parliament (MP), representing a single federal riding in the House of Commons [3]. If most MPs belong to one party, their leader becomes the Prime Minister, forming a majority government. If no party has the majority, the one with the most seats usually forms a minority government. The five major federal parties are the Liberal Party, the Conservative Party of Canada, the New Democratic Party (NDP), the Bloc Québécois and the Green Party of Canada [4].
+
+### Research Objectives, Hypothesis & Importance:
+In our research, our objective is to forecast the outcome of the 2025 Canadian federal election, with a specific focus on predicting the electoral results for the three major parties: the Liberal Party, the Conservative Party of Canada, and the NDP. Building on the patterns observed in the 2015, 2019, and 2021 federal elections, where the Liberal Party secured the greatest proportion of votes [5], we hypothesize that this trend will persist, leading to a victory for the Liberal Party in the upcoming 2025 federal election. While there has been a surge of interest in forecasting election outcomes in recent decades, the prediction of the 2025 Canadian federal election remains controversial [6]. Among the three main parties, the Liberal Party and the Conservative Party of Canada boast the most significant support. The ongoing debates surrounding these parties contribute to the intrigue and significance of predicting the 2025 Canada federal election. Such predictions not only offer a historical context for understanding shifts in voting patterns and party performance but also enable comparisons across different election cycles, aiding in the comprehension of long-term political trends. Furthermore, given the potential impact of Canada's political shifts on international domains, including policies, collaborations, and perceptions, forecasting the election holds relevance beyond national borders, potentially influencing aspects of US policies or trade dynamics.
+
+### Data Source & Key Terminology in Methods
+Our predictive analysis drew data from two primary sources. Firstly, we utilized survey data from the 2021 Canadian Election Study (CES), which aimed to capture the sentiments of Canadians during the 2021 election. The primary objective of this dataset is to elucidate the factors influencing voters' decisions, including why individuals choose to vote, what prompts their support for a particular party or candidate, and the reasons behind shifts in party fortunes from one election to the next [7]. The second data source is census data from the General Social Survey (GSS), an independent annual program in Canada conducting cross-sectional surveys, each focusing on a specific social topic. The GSS seeks to collect data on social trends, monitoring changes in Canadians' living conditions and well-being, and providing insights into targeted social policy issues [8]. 
+
+To predict the proportion of the popular vote in the 2025 Canadian federal election, we employed a multilevel logistic regression model with post-stratification. Multilevel modeling, a statistical technique tailored for hierarchical data structures, accommodates the grouping of data points within multiple levels [9]. Multilevel logistic regression models enable us to consider the clustering of subjects within higher-level units when estimating the impact of subject and cluster characteristics on subject outcomes [10]. By acknowledging the clustered nature of the data, these models accurately estimate standard errors, yielding more precise inferential results. Post-stratification estimation, a method employed in sample surveys, enhances estimator efficiency by adjusting survey weights to align estimated unit counts within specific cells with known population totals. This adjustment increases the precision of estimates in unstratified sampling [11]. 
+
+## Data
+### Census Data
+The census data employed in our research was derived from the outcomes of the Canadian General Social Survey, commonly referred to as GSS [12]. The GSS was specifically crafted to capture data on prevailing social trends and address social policy issues, with a fundamental goal of monitoring shifts in living conditions and the overall satisfaction of Canadians. Utilizing Computer Assisted Telephone Interviewing (CATI) as its data collection method, the GSS offered a cost-effective alternative to in-person interviews [13]. In our research, we leveraged the richness of GSS results as census data. The extensive array of variables within the GSS dataset provided us with valuable insights at both group and individual levels. These insights served as crucial components in our endeavor to predict the electoral outcomes of the Liberal Party, the Conservative Party of Canada, and the NDP.
+
+```{r, include = FALSE}
+set.seed(12345)
+census_data = read_csv("gss_clean.csv")
+census_data[census_data == "$100,000 to $ 124,999"] = "$100,000 to $124,999"
+census_data_cleaned = census_data %>%
+  filter(age>=18) %>%
+  mutate(age=round(age), sex=as.factor(sex), province=as.factor(province), 
+         marital_status=as.factor(marital_status), family_income=as.factor(income_family),
+         birth_canada=as.factor(case_when(place_birth_canada=="Born in Canada" ~ "Yes",
+                                          place_birth_canada=="Born outside Canada" ~ "No",
+                                          TRUE ~ NA))) %>% 
+  select(age, sex, province, marital_status, birth_canada, family_income)
+census_pmm = mice(census_data_cleaned, method = "pmm", m=1, maxit=1)
+census_data_cleaned_nomissing = complete(census_pmm)  
+```
+
+### Data Cleaning for Census Data
+The census data originally comprises 81 variables and 20,602 selected individuals. From this extensive dataset, we narrowed our focus to 6 key variables, namely age, sex, province, marital status, whether born in Canada, and family income. This selection serves three primary purposes. Firstly, chosen variables must be consistent across both census and survey data, facilitating meaningful comparisons during data analysis. Secondly, to mitigate multicollinearity concerns, we excluded variables that may exhibit interference, such as the relationship between marital status and the number of children in a family. Lastly, informed by a literature review, we identified demographic variables likely to exert significant influence on voting behaviors, including age, gender, country of birth, and province of residence [14]. In defining our target population as individuals eligible to vote, we filtered the data to include only those aged 18 and older, rounding the age to integers for consistency with the survey data. To enhance clarity, we introduced a new variable, "born in Canada," indicating whether an individual's birthplace is Canada. This variable was designated as "Yes" for those born in Canada and "No" for those born outside Canada. In instances where respondents answered "Don't know," we considered this as a missing value, as the response did not align with the focus of our study. This meticulous data cleaning process ensured that our subsequent analyses were conducted on a refined dataset that met our research objectives and avoided potential confounding factors.
+
+
+### Survey Data
+The survey data utilized in our study was derived from the Canadian Election Study, commonly referred to as CES. CES was meticulously designed to scrutinize the factors that potentially shape voters' behaviors and the intricate dynamics of Canadian federal elections. Collected primarily through telephone and online surveys conducted during and post the federal elections, CES data offers a comprehensive perspective on voter sentiments [15]. In our research, we incorporated the findings from CES as crucial survey data. Through the lens of CES data, we gained deeper insights into voters' behaviors and familiarized ourselves with the myriad factors that wielded influence over political decisions. This dataset served as a valuable resource for enhancing our understanding of the intricate interplay of variables in the electoral landscape.
+
+```{r, include = FALSE}
+load('ces2021.RData')
+set.seed(12345)
+survey_data_cleaned = survey_data %>%
+  filter(is.na(cps21_votechoice)==FALSE) %>%
+  mutate(age = cps21_age,
+         sex = as.factor(case_when(cps21_genderid==1 ~ "Male", 
+                                      cps21_genderid==2 ~ "Female", 
+                                      cps21_genderid==3 ~ "Female", 
+                                      TRUE ~ NA)),
+         province = as.factor(case_when(cps21_province==1 ~ "Alberta",
+                                        cps21_province==2 ~ "British Columbia",
+                                        cps21_province==3 ~ "Manitoba",
+                                        cps21_province==4 ~ "New Brunswick",
+                                        cps21_province==5 ~ "Newfoundland and Labrador",
+                                        cps21_province==6 ~ "Northwest Territories",
+                                        cps21_province==7 ~ "Nova Scotia",
+                                        cps21_province==8 ~ "Nunavut",
+                                        cps21_province==9 ~ "Ontario",
+                                        cps21_province==10 ~ "Prince Edward Island", 
+                                        cps21_province==11 ~ "Quebec",
+                                        cps21_province==12 ~ "Saskatchewan",
+                                        cps21_province==13 ~ "Yukon",
+                                        TRUE ~ NA)),
+         marital_status = as.factor(case_when(cps21_marital==1 ~ "Married",
+                                              cps21_marital==2 ~ "Living common-law",
+                                              cps21_marital==3 ~ "Divorced",
+                                              cps21_marital==4 ~ "Separated",
+                                              cps21_marital==5 ~ "Widowed",
+                                              cps21_marital==6 ~ "Single, never married",
+                                              TRUE ~ NA)),
+         birth_canada = as.factor(case_when(cps21_bornin_canada==1 ~ "Yes",
+                                            cps21_bornin_canada==2 ~ "No",
+                                            TRUE ~ NA)),
+         family_income = as.factor(case_when(cps21_income_number>=0 & cps21_income_number<25000 ~ "Less than $25,000",
+                                             cps21_income_number>=25000 & cps21_income_number<50000 ~ "$25,000 to $49,999",
+                                             cps21_income_number>=50000 & cps21_income_number<75000 ~ "$50,000 to $74,999",
+                                             cps21_income_number>=75000 & cps21_income_number<100000 ~ "$75,000 to $99,999",
+                                             cps21_income_number>=100000 & cps21_income_number<125000 ~ "$100,000 to $124,999",
+                                             cps21_income_number>=125000 ~ "$125,000 and more",
+                                             TRUE ~ NA)),
+         vote_liberal = as.factor(case_when(cps21_votechoice==1 ~ "Yes",
+                                            cps21_votechoice==7 ~ NA,
+                                            TRUE ~ "No")),
+         vote_conservative = as.factor(case_when(cps21_votechoice==2 ~ "Yes",
+                                                 cps21_votechoice==7 ~ NA,
+                                                 TRUE ~ "No")),
+         vote_NDP = as.factor(case_when(cps21_votechoice==3 ~ "Yes",
+                                        cps21_votechoice==7 ~ NA,
+                                        TRUE ~ "No"))) %>%
+  select(age, sex, province, marital_status, birth_canada,
+         family_income, vote_liberal, vote_conservative, vote_NDP)
+survey_pmm = mice(survey_data_cleaned, method = "pmm", m=1, maxit=1)
+survey_data_cleaned_nomissing = complete(survey_pmm)
+```
+
+### Data Cleaning for Survey Data
+The original survey dataset comprises 1,062 variables and 20,968 selected individuals. Our focus narrowed down to key variables: age, sex, province of residence, marital status, country of birth, family income, and vote choice. The first six variables aligned with the census data, while the last variable captured individuals' vote choices, serving as crucial response variables for our analysis. 
+
+In alignment with our target population of those eligible and willing to vote, we filtered out individuals lacking voting eligibility and those choosing not to vote. Specifically, we excluded respondents who did not answer the question "Which party do you think you will vote for?" This question was only presented to individuals above 18 years old, Canadian, and likely to vote. 
+
+To enhance consistency with the census data, we modified the variable "gender" to "sex," categorizing those identifying as men as male and grouping those identifying as women and non-binary as female. The adjustment recognized the importance of adequately representing genders facing systemic discrimination, including those identifying as non-binary because those who identify as non-binary experience at least as much oppression as those who identify as female [16].
+
+Numerical codes were adjusted for clarity and consistency. For instance, province of residence numbers 1 to 13 were renamed to their respective provinces or territories: Alberta, British Columbia, Manitoba, New Brunswick, Newfoundland and Labrador, Northwest Territories, Nova Scotia, Nunavut, Ontario, Prince Edward Island, Quebec, Saskatchewan, Yukon. Similarly, marital status numbers 1 to 6 were renamed to Married, Living common-law, Divorced, Separated, Widowed, and Single, never married. The birthplace variable was adjusted to whether born in Canada, representing yes for people born in Canada and no for those born outside Canada. Family income was converted into six categories: less than \$25,000, \$25,000 to \$49,999, \$50,000 to \$74,999, \$75,000 to \$99,999, \$100,000 to \$124,999, \$125,000 and more. Negative numbers or other invalid answers are considered as missing values.
+
+We generated three binary responses from the question "Which party do you think you will vote for?" where 1 corresponds to the Liberal Party, 2 to the Conservative Party, 3 to the NDP, and other numbers to parties outside our interest. For each binary response, such as voting for the Liberal Party, individuals selecting an option other than 1 were coded as a "No" for that variable. The same coding mechanism was applied to the other two binary responses: voting for the Conservative Party and voting for the NDP. It is crucial to emphasize that participants are required to make a selection for each survey question; skipping or leaving questions blank is not permitted, unless the question is not applicable. Consequently, there should be no missing values after excluding ineligible participants. However, there exists an option for "prefer not to say/don't know" for every multiple-choice question. We treat this response as missing values for each variable because it does not contribute useful information to our analysis. This meticulous data cleaning process ensured our dataset was refined, consistent, and aligned with our research objectives.
+
+### Missing Data
+We employed multiple imputation using the predictive mean matching method (PMM). In PMM imputation, missing values are imputed by drawing from the observed values of the variable with the closest predicted mean. Predicted means are derived from a regression model that includes both variables that are complete and those with missing values. The choice of PMM as our imputation method is grounded in its ability to preserve the data structure without introducing substantial alterations to the original data, enhancing its robustness in maintaining the original distribution. PMM yields more realistic imputations, reflecting the actual data, and effectively retains patterns and variability present in the original dataset. As a result, the imputed values have minimal impact on our prediction accuracy, helping to mitigate bias. Additionally, PMM can be extended to handle imputations for multiple variables simultaneously, providing a comprehensive approach to address missing data across various dimensions [17]. Since the PMM imputation includes randomness, so we employed a fixed random seed of 12345 to guarantee consistency and reproducibility.
+
+The imputation of missing data was performed using mice package [18].
+
+```{r, echo=FALSE}
+variables = c("Age", "Sex", "Province", "Marital Status", "Family Income", "Born in Canada")
+n = c(sum(is.na(census_data_cleaned$age)), sum(is.na(census_data_cleaned$sex)), sum(is.na(census_data_cleaned$province)), sum(is.na(census_data_cleaned$marital_status)), sum(is.na(census_data_cleaned$family_income)), sum(is.na(census_data_cleaned$birth_canada)))
+prop=n/nrow(census_data_cleaned)
+census_missing=data.frame(variables, n, prop)
+knitr::kable(census_missing, col.names = c("Predictors", "Number", "Proportion"), align = "lcc", caption="Missing Data in the Census Data")
+```
+
+Table 1 shows the number and proportion of missing values for each variable in the census data. It is apparent that missing values only exist in Marital Status and Born in Canada. Specifically, there are 7 missing values for Marital Status, constituting approximately 0.03% of the overall dataset, and 148 missing values for Born in Canada, accounting for around 0.73% of the entire dataset. Despite the negligible impact of these missing values on our overall analysis, we opt to impute them to ensure a comprehensive and thorough dataset. 
+
+
+```{r, echo=FALSE}
+variables1 = c("Age", "Sex", "Province", "Marital Status", "Family Income", "Born in Canada", "Vote for Liberal Party", "Vote for Conservative Party", "Vote for NDP")
+n1 = c(sum(is.na(survey_data_cleaned$age)), sum(is.na(survey_data_cleaned$sex)), sum(is.na(survey_data_cleaned$province)), sum(is.na(survey_data_cleaned$marital_status)), sum(is.na(survey_data_cleaned$family_income)), sum(is.na(survey_data_cleaned$birth_canada)), sum(is.na(survey_data_cleaned$vote_liberal)), sum(is.na(survey_data_cleaned$vote_conservative)), sum(is.na(survey_data_cleaned$vote_NDP)))
+prop1 =n1/nrow(survey_data_cleaned)
+survey_missing=data.frame(variables1, n1, prop1)
+knitr::kable(survey_missing, col.names = c("Predictors", "Number", "Proportion"), align = "lcc", caption="Missing Data in the Survey Data")
+```
+Table 2 provides an overview of the number and proportion of missing values for each variable in the survey data. Notably, missing values are observed for Sex, Marital Status, Family Income, Born in Canada, Vote for Liberal Party, Vote for Conservative Party, and Vote for NDP. Specifically, there are 24 missing values for Sex, accounting for approximately 0.16% of the overall dataset; 131 missing values for Marital Status, constituting about 0.9% of the overall dataset; 420 missing values for Family Income, representing around 2.89% of the overall dataset; and 2091 missing values for each of the three vote choice variables, making up about 14.3% of the overall dataset. It is important to note that some individuals may choose to withhold their personal information, opting for response "Don’t know/Prefer not to say" for questions related to gender, birthplace, marital status, and family income. As for the missing data in the vote choice variables, it is conjectured that some individuals may not have explicit political stances, leading them to abstain from voting for any particular political party.
+
+### Numerical Summary
+
+```{r, echo=FALSE}
+options(knitr.kable.NA = '') 
+knitr::kable(summary(census_data_cleaned_nomissing), col.names = c("Age", "Sex", "Province", "Marital Status", "Born in Canada", "Family Income"), align = "lcllcl", caption="Numerical Summary for Census Data")
+```
+Table 3 meticulously details the variables of interest in the census data, providing a comprehensive insight into the statistical features of numerical variables and the counts for categorical variables. The average age stands at approximately 53, with a median of 55 and an interquartile range (IQR) spanning 29. A distinct gender imbalance is evident, with the female population markedly outnumbering their male counterparts. The table showcases the six provinces with the highest populations, with Ontario leading as the most populous province. Turning to marital status, the largest population falls under the category of married individuals, followed by those who are single and never married. A significant disparity is noted between individuals born in Canada and immigrants, with the former outnumbering the latter by threefold. We also observe a wealth gap within the census data. It also reveals disparities in wealth distribution among individuals. 
+
+```{r, echo=FALSE}
+options(knitr.kable.NA = '') 
+knitr::kable(summary(survey_data_cleaned_nomissing[c(1, 2, 3, 4, 5)]), col.names = c("Age", "Sex", "Province", "Marital Status", "Born in Canada"), caption="Numerical Summary for Survey Data")
+```
+
+```{r, echo=FALSE}
+options(knitr.kable.NA = '') 
+knitr::kable(summary(survey_data_cleaned_nomissing[c(6, 7, 8, 9)]), col.names = c("Family Income", "Vote for Liberal Party", "Vote for Conservative Party", "Vote for NDP"), align = "lccc")
+```
+
+
+Table 4 offers a comprehensive exploration of the variables of interest within the survey data. A portion of the summary aligns closely with the previous section, revealing an average age of 50.75, a median of 52, and an IQR spanning 29. Among the featured provinces, Ontario stands out with the highest population. Marital status distribution indicates that the majority of respondents are married, followed by those who are single and never married. Key variations emerge notably in gender and family income, showcasing a less pronounced gender disparity and wealth gap compared to the census data. A notable aspect in the survey data is vote for Liberal Party, securing the highest number of votes, while the NDP party garners the least support. This divergence from the census data underscores the nuanced nature of survey data, emphasizing its unique insights derived from sampled perspectives. While differences exist between survey and census data, the survey data continues to serve as a robust and valuable resource for gaining insights into the broader population dynamics. 
+
+### Data Visualization
+```{r, echo=FALSE, fig.height = 10, fig.width = 10}
+survey_example <- survey_data_cleaned_nomissing %>% 
+  group_by(sex,family_income,marital_status) %>% 
+  mutate(n_strata = n()) %>% 
+  group_by(family_income) %>% 
+  mutate(n_within_state = n()) %>% 
+  mutate(prop = n_strata/n_within_state)
+
+df <- survey_example %>% group_by(sex,family_income,marital_status) %>% summarise(prop = prop[1])
+
+census_example <- census_data_cleaned_nomissing %>% 
+  group_by(sex,family_income,marital_status) %>% 
+  mutate(n_strata = n()) %>% 
+  group_by(family_income) %>% 
+  mutate(n_within_state = n()) %>% 
+  mutate(prop = n_strata/n_within_state)
+
+df2 = census_example %>% group_by(sex,family_income,marital_status) %>% summarise(prop2 = prop[1])
+
+df2 %>% 
+  left_join(df, by = c("sex","family_income","marital_status")) %>% 
+  dplyr::select('family_income','sex','marital_status','prop','prop2') %>% 
+  melt(id.vars = c("family_income","sex","marital_status")) %>% 
+  mutate(Legend = ifelse(variable == "prop","Survey Data","Census Data")) %>%
+  ggplot(aes(sex, value, fill = Legend))+ 
+  geom_bar(stat = "identity", position = position_dodge(), alpha = 0.75) +
+  labs(x="Sex", y="Proportion", title="Figure 1: Difference of Proportion in Census and Survey Data") +
+  facet_grid(marital_status~family_income) +
+  theme_bw()
+```
+Figure 1 presents a faceted side-by-side bar chart illustrating the disparity in proportions between census and survey data, where sex is plotted on the x-axis and the proportion of individuals in each demographic group is represented on the y-axis. The bars are grouped by family income level and marital status. The distinctive pink and blue bars represent for the census and survey data, as indicated in the legend. This graph serves the purpose of elucidating variations in proportions of demographic groups across the two data sets. The potential utility of the poststratification method in our data analysis is clearly evident in Figure 1, highlighting its relevance for addressing discrepancies and refining the accuracy of our interpretations. 
+
+```{r, echo=FALSE}
+vote_liberal_yes = survey_data_cleaned_nomissing %>% filter(vote_liberal=="Yes") %>% group_by(province) %>% summarise(n_yes=n())
+n_vote_liberal = survey_data_cleaned_nomissing %>% group_by(province) %>% summarise(n=n()) 
+prop_vote_liberal = merge(vote_liberal_yes, n_vote_liberal, by="province")
+prop_vote_liberal = prop_vote_liberal %>% mutate(prop_liberal=n_yes/n, province_short=c("AB", "BC", "MB", "NB", "NL", "NT", "NS", "NU", "ON", "PE", "QC", "SK", "YT")) %>% select(province, province_short, prop_liberal)
+
+vote_conservative_yes = survey_data_cleaned_nomissing %>% filter(vote_conservative=="Yes") %>% group_by(province) %>% summarise(n_yes=n())
+n_vote_conservative = survey_data_cleaned_nomissing %>% group_by(province) %>% summarise(n=n()) 
+prop_vote_conservative = merge(vote_conservative_yes, n_vote_conservative, by="province")
+prop_vote_conservative = prop_vote_conservative %>% mutate(prop_conservative=n_yes/n) %>% select(province, prop_conservative)
+
+vote_NDP_yes = survey_data_cleaned_nomissing %>% filter(vote_NDP=="Yes") %>% group_by(province) %>% summarise(n_yes=n())
+n_vote_NDP = survey_data_cleaned_nomissing %>% group_by(province) %>% summarise(n=n()) 
+prop_vote_NDP = merge(vote_NDP_yes, n_vote_NDP, by="province")
+prop_vote_NDP = prop_vote_NDP %>% mutate(prop_NDP=n_yes/n) %>% select(province, prop_NDP)
+
+prop_vote = merge(prop_vote_liberal, prop_vote_conservative, by="province") %>% merge(prop_vote_NDP, by="province") %>% select(province_short, prop_liberal, prop_conservative, prop_NDP)
+
+prop_vote = melt(prop_vote) %>%
+  mutate(Legend=case_when(variable=="prop_liberal" ~ "Liberal Party",
+                          variable=="prop_conservative" ~ "Conservative Party",
+                          variable=="prop_NDP" ~ "NDP")) %>%
+  select(province_short, Legend, value)
+ggplot(prop_vote, aes(x=province_short, y=value, fill=Legend)) + 
+  geom_bar(stat = "identity", position = position_dodge(), alpha = 0.75) + 
+  labs(x="Province", y="Proportion of Votes", title="Figure 2: Proportion of Votes for Each Party across Province") +
+  theme_classic()
+```
+Figure 2 presents a side-by-side bar chart illustrating the proportion of votes for each party across provinces, with province abbreviations on the x-axis and the proportion of votes on the y-axis. The distinctive green, pink, and blue bars denote the Liberal Party, the Conservative Party of Canada, and the NDP respectively, as detailed in the legend. Notable patterns emerge, with the Conservative Party holding an advantage in Alberta, Prince Edward Island, and Saskatchewan, while the NDP dominates in British Columbia and Nunavut. Conversely, the Liberal Party exhibits an significant advantage in New Brunswick, Newfoundland and Labrador, Nova Scotia, Northwest Territories, Ontario, and Quebec. It is ambiguous for Manitoba and Yukon. Figure 2 aligns with our initial hypothesis and background research, indicating an overall advantage for the Liberal Party in terms of support. However, for a more precise analysis, we rely on our predictive model to forecast the election results.
+
+Data cleaning and figures are performed using tidyverse [19], and data visualization was created by using broom [20] and reshape2 [21].
+
+## Methods
+
+We adopted a two-level multilevel logistic regression model with poststratification within a frequentist framework for our analysis to predict the outcome of the 2025 Canadian federal election.
+
+### Regression Model Specifics
+Logistic regression, initially prevalent in medical science research for predicting binary outcomes like 'yes' or 'no' to a specific disease, has seen a growing application in electoral studies [22]. In our research, given that voting for a particular party entails a binary outcome—either a 'yes' or 'no' response—we selected logistic regression. This method not only suits our binary outcome but also enables the examination of relationships between independent variables and categorical dependent variables, aligning with our use of demographic data such as province, family income, sex, martial status, and whether born in Canada as predominantly categorical predictors.
+
+In our approach, we incorporate a multilevel regression with poststratification (MRP), a method renowned for its effectiveness in forecasting public opinions, including election outcomes. The strength of the multilevel model lies in its capacity to consider predictors at both individual levels, such as demographic information, and group levels like provinces, offering more accurate predictions by avoiding the assumption of independence among observations [23]. Given our dataset's characteristics, where observations are not assumed to be independent due to regional variations, we include provinces as a group-level predictor in our multilevel model to enhance prediction accuracy, acknowledging that regions with strong economies and many job opportunities tend to attract more immigrants. 
+
+Opting for the frequentist approach over the Bayesian approach, we prioritize simplicity and efficiency. The frequentist method, being more traditionally used, doesn't necessitate prior knowledge of the data, unlike the Bayesian approach, which requires a prior knowledge of the distribution [24]. The frequentist approach is not only more straightforward but also more time-efficient, especially with our large dataset, where the computational demands for Bayesian analysis were significantly higher, taking over 15 minutes, making it impractical for our purposes. 
+
+$$
+\begin{aligned}
+&\text{Level 1: }\log\frac{p_{ij}}{1-p_{ij}}=\beta_{0j}+\beta_1Age_{ij}+\beta_2Sex_{ij}+\beta_3Family.Income_{ij}+\beta_4Born.in.Canada_{ij}+\beta_5Marital.Status_{ij}\\
+&\text{Level 2: }\beta_{0j} = r_{00} + r_{01}Province_j+ u_{0j}, \ \ u_{0j}\sim N(0,\sigma^2) \ \ \ \ \ 
+\end{aligned}
+$$
+In the Level 1 model, the left side encapsulates a logit function, transforming probabilities into log odds to facilitate mathematical operations within the model. Specifically, $p_{ij}$ represents the probability of an individual $i$ in province $j$ voting for a specific party. The coefficients $\beta_1$ to $\beta_5$ denote the fixed slopes, measuring the impact of individual-level predictors on the likelihood of voting for the party. For categorical variables with n levels, we employ n-1 indicator variables, simplifying a yes or no scenario in the data. Taking sex as an example, with female as the reference level, the indicator variable indicates a yes or no response to being male. Similarly, family income with six levels breaks down into five indicator variables, using \$100,000 to \$124,999 as the reference level. Birthplace, with two levels, employs an indicator variable for born in Canada, using born outside Canada as the reference level. For marital status, five indicator variables exist, with 'Divorced' as the reference level. Therefore, including one coefficient for the numerical variable age, we have a total of 13 $\beta$s coefficients.
+
+The term $\beta_{0j}$ constitutes a random intercept that varies across groups, as illustrated in the Level 2, where provinces are denoted by $j$. $\beta_{0j}$ signifies the average log odds of voting for a specific party in group $j$ when all individual-level predictor variables, except province, are set to the reference level. $r_{00}$ denotes the average intercept across all groups when the province predictor is at its reference level. The term $r_{01}Province_j$ gauges the impact of the province on the intercept. Finally, $u_{0j}$ captures the unexplained variability within group intercepts, not accounted for by the province predictor, and accommodates the random effects of the model, presumed to follow a normal distribution with a mean of 0.
+
+### Assumption Check for Logistic Regression
+Addressing assumptions beyond binary outcomes in logistic regression, we do not anticipate significant multicollinearity among variables. Multicollinearity, arising from closely related variables, is unlikely given our diverse predictors—age, sex, family income, whether born in Canada, and marital status. Consequently, we do not expect substantial correlations between them. Furthermore, no conspicuous outliers were identified in our dataset, as depicted in Figure 3 in the Appendix, where votes for the Liberal Party are plotted against age. All other predictors, being categorical variables, do not exist outliers.
+
+### Post-Stratification 
+As highlighted earlier, we have adopted a MRP model, with the inclusion of poststratification to address disparities between population proportions in the survey and census data. A visual comparison in Figure 1 in the data section underscores notable differences in the proportions of various demographic groups between the two datasets. For instance, examining the population of widowed females with a family income below $25,000 reveals a significant disparity between the census and survey data. This discrepancy suggests that the population distribution in the survey data may not faithfully mirror the actual population. Consequently, we employed poststratification as a corrective measure. This method entails adjusting the weights of survey responses to align more closely with the genuine population distribution. 
+
+The poststratification process involves segmenting the total population into various subgroups, or cells, based on demographic criteria.  In the census data, the age variable spans from 18 to 80. For our poststratification process, we treat age as having 63 unique levels without grouping it. For instance, a cell might encompass an 18-year-old female from Ontario, with a family income of \$100,000 to \$124,999, born in Canada, and divorced. The total number of cells is calculated by multiplying the levels for all variables, resulting in 63 (ages) by 2 (sexes) by 13 (provinces) by 6 (marital statuses) by 2 (birthplaces, Canada or not) by 6 (family income levels), yielding 117,936 distinct cells.
+
+$$
+\hat{y}^{PS}=\frac{\sum_{i}\sum_{j}\sum_{k}\sum_{l}\sum_{m}\sum_{n}N_{ijklmn}\hat y_{ijklmn}}{N}
+=\sum_{i}\sum_{j}\sum_{k}\sum_{l}\sum_{m}\sum_{n}W_{ijklmn}\hat y_{ijklmn}
+$$
+$\hat{y}^{PS}$ in the poststratification formula represents the estimated value of the proportion of participants voting for a specific party after poststratification. To execute poststratification, we compute the proportion of individuals within each specific subgroup voting for a particular party, denoted by $\hat y_{ijklmn}$ in the poststratification formula, where $i$ signifies age, $j$ represents the province, $k$ represents sex, $l$ represents marital status, $m$ represents family income, and $n$ represents whether one is born in Canada. To align the demographic distribution with the census data more accurately, we calculate a weight for each subgroup using the census data, denoted as $W_{ijklmn}$ in the formula. Subsequently, a weighted average is computed using the adjusted weights based on the census data. To facilitate poststratification, we ensured that the categories for each variable in the survey data matched those in the census data, a crucial step completed in the data cleaning section. 
+
+The multilevel regression was performed using lme4 package [25].
+
+## Results 
+
+```{r, echo=FALSE}
+liberal_model = glmer(vote_liberal~age+family_income+birth_canada+marital_status+sex+(1|province),data=survey_data_cleaned_nomissing, family="binomial")
+
+res_liberal <- round(summary(liberal_model)$coef, 3)
+rownames(res_liberal) <- c("(intercept)","Age", "$125,000 and more", "$25,000 to $49,999", "$50,000 to $74,999", "$75,000 to $99,999", "Less than $25,000", "Born in Canada", "Living Common-Law", "Married", "Separated", "Single, Never Married", "Windowed", "Male")
+knitr::kable(res_liberal, align = "lcccc", caption="Model Result for Liberal Party")
+```
+Table 6 is the logistic regression model results for predicting support for the Liberal Party, offering insights into the impact of various demographic factors. The estimate for the intercept is -0.630, representing the log odds of supporting the Liberal Party when all other predictors are zero. This intercept is meaningless because in reality we do not have an observation with age of 0. Age exhibits a positive and highly significant effect, with an estimate of 0.009 and a p-value of 0.000, suggesting that as age increases, the average log odds of supporting the Liberal Party also increase. Among income categories, individuals with the family income in \$25,000 to \$49,999 and less than $25,000 groups show negative and significant effects (estimates = -0.289, p-value = 0.000, and -0.222, p-value = 0.004, respectively), indicating a lower likelihood of supporting the Liberal Party than those with the family income of \$100,000 to \$124,999. Being born in Canada has a strong negative effect (estimate = -0.403, p-value = 0.000), implying a lower likelihood of supporting the Liberal Party than individuals born outside Canada. Living Common-Law also has a negative and significant impact (estimate = -0.288, p-value = 0.001), indicating a higher likelihood of supporting the Liberal Party than divorced individuals. Sex, represented by the Male category, shows a negative and highly significant effect (estimate = -0.171, p-value = 0.000), suggesting a lower likelihood of supporting the Liberal Party than female.  Additionally, the rest indicators are insignificant relative to their reference levels.
+
+```{r, echo=FALSE}
+conservative_model = glmer(vote_conservative~age+family_income+birth_canada+marital_status+sex+(1|province),data=survey_data_cleaned_nomissing, family="binomial")
+
+res_conservative <- round(summary(conservative_model)$coef, 3)
+rownames(res_conservative) <- c("(intercept)","Age", "$125,000 and more", "$25,000 to $49,999", "$50,000 to $74,999", "$75,000 to $99,999", "Less than $25,000", "Born in Canada", "Living Common-Law", "Married", "Separated", "Single, Never Married", "Windowed", "Male")
+knitr::kable(res_conservative, align = "lcccc", caption="Model Result for Conservative Party")
+```
+Table 7 is the logistic regression model results for predicting support for the Conservative Party, revealing the influence of various demographic factors. The intercept has an estimate of -1.666, indicating the average log odds of supporting the Conservative Party when all other predictors are zero. This intercept is meaningless because in reality we do not have an observation with age of 0. Age exhibits a positive and highly significant effect, with an estimate of 0.013 and a p-value of 0.000, suggesting that as age increases, the average log odds of supporting the Conservative Party also increase. Among income categories, individuals with the family income of \$25,000 to \$49,999, \$50,000 to \$74,999, \$75,000 to \$99,999 and less than $25,000 groups show negative and significant effects (estimates = -0.339, -0.221, -0.198, -0.314, all with p-values < 0.001), indicating a lower likelihood of supporting the Conservative Party compared with individuals with the family income of \$100,000 to \$124,999. Being married has a strong positive effect (estimate = 0.324, p-value = 0.000), implying a higher likelihood of supporting the Conservative Party for married individuals than divorced individuals. Sex, represented by the Male category, shows a positive and highly significant effect (estimate = 0.340, p-value = 0.000), suggesting a higher likelihood of supporting the Conservative Party than female. Additionally, the rest indicators are insignificant relative to their reference levels.
+
+```{r, echo=FALSE}
+NDP_model = glmer(vote_NDP~age+family_income+birth_canada+marital_status+sex+(1|province),data=survey_data_cleaned_nomissing, family="binomial")
+
+res_NDP <- round(summary(NDP_model)$coef, 3)
+rownames(res_NDP) <- c("(intercept)","Age", "$125,000 and more", "$25,000 to $49,999", "$50,000 to $74,999", "$75,000 to $99,999", "Less than $25,000", "Born in Canada", "Living Common-Law", "Married", "Separated", "Single, Never Married", "Windowed", "Male")
+knitr::kable(res_NDP, align = "lcccc", caption="Model Result for NDP")
+```
+Table 8 is the logistic regression model results for predicting support for the NDP, indicating the impact of demographic variables on party preference. The intercept has an estimate of 0.387 with a p-value of 0.031, suggesting a positive log odds of supporting the NDP when all other predictors are zero. This intercept is meaningless because in reality we do not have an observation with age of 0. Age exhibits a significant negative effect (estimate = -0.032, p-value = 0.000), indicating that as age increases, the average log odds of supporting the NDP decrease. Notably, the income categories show significant effects, with individuals in the \$25,000 to \$49,999, \$50,000 to \$74,999, and less than \$25,000  groups having positive estimates (0.416, 0.226, and 0.322, both with p-values < 0.01), indicating a higher likelihood of supporting the NDP than those in \$100,000 to \$124,999. Being born in Canada has a strong positive effect (estimate = 0.224, p-value = 0.000), implying a higher likelihood of supporting the NDP than individuals born outside Canada. Conversely, being married has a negative effect (estimate = -0.331, p-value = 0.000), suggesting a lower likelihood of supporting the NDP for married individuals than divorced individuals. Being male also exhibits a negative and highly significant effect (estimate = -0.402, p-value = 0.000), indicating a lower likelihood of supporting the NDP than female. Additionally, the rest indicators are insignificant relative to their reference levels.
+
+```{r, echo=FALSE}
+census_data_counts = census_data_cleaned_nomissing %>% 
+  group_by(sex, province, age, marital_status, family_income, birth_canada) %>% 
+  summarise(n=n())
+census_data_counts$liberal_estimate <-
+  liberal_model %>%
+  predict(newdata = census_data_counts, type="response", allow.new.levels=T)
+census_data_counts$conservative_estimate <-
+  conservative_model %>%
+  predict(newdata = census_data_counts, type="response", allow.new.levels=T)
+census_data_counts$NDP_estimate <-
+  NDP_model %>%
+  predict(newdata = census_data_counts, type="response", allow.new.levels=T)
+
+total_pop <- nrow(census_data_cleaned_nomissing)
+results <- census_data_counts %>% 
+  mutate(weights = n/total_pop, 
+         pred_liberal = weights*liberal_estimate,
+         pred_conservative = weights*conservative_estimate,
+         pred_NDP = weights*NDP_estimate) 
+yPS_liberal = sum(results$pred_liberal)
+yPS_conservative = sum(results$pred_conservative)
+yPS_NDP = sum(results$pred_NDP)
+yPS = data.frame(yPS_liberal, yPS_conservative, yPS_NDP)
+knitr::kable(head(results %>% select(age, sex, province, marital_status, family_income, birth_canada, n, weights)),  col.names = c("Age", "Sex", "Province", "Marital Status", "Born in Canada", "Family Income", "Number", "Weights"), align = "cccllccc", caption="Cells in Poststratification Process")
+```
+Table 9 displays the first six observations of the poststratification process, grouped by age, sex, province, marital status, family income, and birthplace. In practice, our poststratification process consists of 12,035 cells, a number that deviates from the theoretical count of 117,936 due to the absence of observations in some cells. For instance, while theoretically, a cell might represent an observation of an 18-year-old widow, in reality, such a cell does not have any observation as individuals are typically not married at such a young age. The Number column indicates the number of observations within each cell. The final column Weights signifies the weights assigned to each cell, crucial for our post-stratification calculations. These weights play a vital role in adjusting for the observed discrepancies between the survey and census data, ensuring a more accurate representation of the true population distribution.
+
+```{r, echo=FALSE}
+knitr::kable(yPS, col.names = c("Liberal Party", "Conservative Party", "NDP"), align = "ccc", caption="Probability of Votes in 2025 Federal Election")
+```
+Table 10 shows our prediction results. Utilizing the post-stratification technique, we have generated predictive estimates for the proportions of participants voting for specific parties in the upcoming 2025 federal election. The estimated proportion of votes for the Liberal Party stands at approximately 0.34, while the Conservative Party and NDP are estimated at around 0.29 and 0.22, respectively. This prediction aligns with historical trends observed in the federal elections of 2015, 2019, and 2021, where the Liberal Party consistently secured the highest proportion of votes, followed by the Conservative Party and then the NDP. Therefore, our prediction suggests that the Liberal Party is poised to emerge victorious with the highest proportion of votes in the 2025 federal election, supporting our earlier hypothesis regarding the Liberal Party's success in the upcoming election.
+
+Table formatting is preformed using knitr package [26].
+
+All analysis for this report was programmed using `R version 4.0.2` [27].
+
+## Conclusions
+
+### Summary
+In conclusion, our research delved into predicting voting behaviors in the 2025 Canadian federal election, with a primary focus on the Liberal Party, the Conservative Party of Canada, and the NDP. Given the historical trend of the Canadian federal election, we hypothesized that this trend will persist, leading to a victory for the Liberal Party in the upcoming 2025 federal election. With the two data sources: the CES data as survey data and the GSS data as census data, we employed a robust methodology — two-level multilevel logistic regression model with poststratification within a frequentist framework, utilizing both individual-level predictors such as age, sex, family income, birthplace, marital status and group-level predictors like province. Our methods provided insights into the factors influencing voting choices, rectifying discrepancies between survey and census data to ensure a more accurate representation of the population. Our results indicated that the Liberal Party is likely to secure the highest proportion of votes in the upcoming election, maintaining a trend observed in previous federal elections. In essence, our research contributes a predictive model for the 2025 Canadian federal election, emphasizing the importance of demographic variables in shaping voting behaviors. The consistent historical trend of the Liberal Party's dominance, as supported by our findings, underscores the relevance of demographic considerations in political analyses. However, it is essential to acknowledge the inherent uncertainties in predicting human behavior and the dynamic nature of political landscapes, emphasizing the need for ongoing research and adaptability in understanding and forecasting electoral outcomes.
+
+### Limitation & Recommendation
+Our study encounters several limitations that should be addressed in future analyses. Firstly, due to constraints in data availability across two datasets, we focused on six demographic variables as predictors, neglecting potentially confounding factors like education level. Introducing additional predictors, such as education, has the potential to enhance the precision of election predictions without introducing multicollinearity concerns. Secondly, the discrepancy in the collection years of our datasets (2017 for GSS and 2021 for CES) may compromise the accuracy of adjusting population proportions. To ensure a more precise representation of the 2021 population, future analyses should utilize census data collected in the same year as the survey data. Lastly, our study exclusively considered sex as a predictor due to the absence of gender information in the census data. Acknowledging that gender is often more representative in social and political research and that imputing gender to sex is statistically and socially unethical, we recommend future research endeavors to incorporate the significant predictor of gender rather than sex. This would contribute to both statistical robustness and ethical research practices.
+
+### Looking Forward
+Despite the limitations of our research, there are several ways for improvement and expansion in future analyses. Firstly, incorporating temporal dynamics, such as assessing changes in political landscapes over time, holds the potential to enhance the predictive capabilities of our models. This could involve examining trends from previous elections and considering their implications for the current political climate. Secondly, to ensure the robustness of our models, we recommend validating them using external datasets or applying them to different time periods. For instance, applying our model to the 2024 US presidential election could provide valuable insights. Thirdly, exploring alternative modeling approaches, such as standard regression, Bayesian methods, or multilevel regression with additional hierarchical levels like cities and provinces, could offer a more nuanced understanding of the predictors' impact. Lastly, given the growing influence of social media on political opinions, future analyses could explore the integration of social media data to capture real-time sentiments and reactions, providing a more comprehensive view of voter behavior and preferences.
+
+\newpage
+
+## Bibliography
+
+1. Elections Canada. “A Brief History of Federal Voting Rights in Canada | Elections Canada’s Civic Education.” Electionsanddemocracy.ca, 2023, [https://electionsanddemocracy.ca/voting-rights-through-time-0/brief-history-federal-voting-rights-canada](https://electionsanddemocracy.ca/voting-rights-through-time-0/brief-history-federal-voting-rights-canada). Accessed 23 Nov. 2023.
+
+2. “Canadian Election Studies | Map and Data Library.” [https://mdl.library.utoronto.ca/collections/numeric-data/canadian-election-studies](https://mdl.library.utoronto.ca/collections/numeric-data/canadian-election-studies). Accessed 23 Nov. 2023.
+
+3. “Electoral Systems (BP-334E).” Publications.gc.ca, [https://publications.gc.ca/Collection-R/LoPBdP/BP/bp334-e.htm#3.%20Singletxt](https://publications.gc.ca/Collection-R/LoPBdP/BP/bp334-e.htm#3.%20Singletxt). Accessed 23 Nov. 2023.
+
+4. “Member of Parliament (MP) | the Canadian Encyclopedia.” [https://www.thecanadianencyclopedia.ca/en/article/member-of-parliament](https://www.thecanadianencyclopedia.ca/en/article/member-of-parliament). Accessed 23 Nov. 2023.
+
+5. Heard, Andrew. “Canadian Election Results: 1867-2019.” [https://www.sfu.ca/~aheard/elections/1867-present.html](https://www.sfu.ca/~aheard/elections/1867-present.html). Accessed 23 Nov. 2023.
+
+6. “Majority Supporting the Government - Parliaments and Ministries - House of Commons Procedure and Practice, Third Edition, 2017 - ProceduralInfo - House of Commons of Canada.” Www.ourcommons.ca, [https://www.ourcommons.ca/procedure/procedure-and-practice-3/ch_02_1-e.html](https://www.ourcommons.ca/procedure/procedure-and-practice-3/ch_02_1-e.html). Accessed 23 Nov. 2023.
+
+7. Canadian Election Study. [www.ces-eec.ca/](www.ces-eec.ca/). Accessed 23 Nov. 2023.
+
+8. Government of Canada, Statistics Canada. “General Social Survey - Canadians’ Safety (GSS).” Www23.Statcan.gc.ca, 8 Mar. 2019, [https://www23.statcan.gc.ca/imdb/p2SV.pl?Function=getSurvey&SDDS=4504](https://www23.statcan.gc.ca/imdb/p2SV.pl?Function=getSurvey&SDDS=4504). Accessed 23 Nov. 2023.
+
+9. Dash, Sunil Kumar. “A Brief Introduction to Multilevel Modelling.” Analytics Vidhya, 20 Jan. 2022, [https://www.analyticsvidhya.com/blog/2022/01/a-brief-introduction-to-multilevel-modelling/#h-what-is-multilevel-modelling](https://www.analyticsvidhya.com/blog/2022/01/a-brief-introduction-to-multilevel-modelling/#h-what-is-multilevel-modelling). Accessed 23 Nov. 2023.
+
+10. Zewude, Bereket Tessema, et al. “Multilevel Logistic Regression Modelling to Quantify Variation in Malaria Prevalence in Ethiopia.” PLOS ONE, vol. 17, no. 9, 29 Sept. 2022, p. e0273147, [https://doi.org/10.1371/journal.pone.0273147](https://doi.org/10.1371/journal.pone.0273147). Accessed 23 Nov. 2023.
+
+11. Valliant, Richard. “Poststratification and Conditional Variance Estimation.” Journal of the American Statistical Association, vol. 88, no. 421, Mar. 1993, p. 89, [https://doi.org/10.2307/2290701](https://doi.org/10.2307/2290701). Accessed 23 Nov. 2023.
+
+12. “University of Toronto Libraries.” Library.utoronto.ca, [https://sda-artsci-utoronto-ca.myaccess.library.utoronto.ca/sdaweb/analysis/?dataset=gss31](https://sda-artsci-utoronto-ca.myaccess.library.utoronto.ca/sdaweb/analysis/?dataset=gss31). Accessed 23 Nov. 2023.
+
+13. “The General Social Survey: An Overview.” Www150.Statcan.gc.ca, 20 Feb. 2019, [https://www150.statcan.gc.ca/n1/en/catalogue/89F0115X](https://www150.statcan.gc.ca/n1/en/catalogue/89F0115X). Accessed 23 Nov. 2023.
+
+14. Leemann, Lucas, and Fabio Wasserfallen. “Measuring Attitudes: Multilevel Modeling with Post-Stratification (MrP).” Www.zora.uzh.ch, Sage Publications, 1 May 2020, [https://www.zora.uzh.ch/id/eprint/180978](https://www.zora.uzh.ch/id/eprint/180978). Accessed 23 Nov. 2023.
+
+15. “Surveys | Canadian Election Study | Étude Électorale Canadienne.” Ces-Eec.arts.ubc.ca, [https://ces-eec.arts.ubc.ca/english-section/surveys](https://ces-eec.arts.ubc.ca/english-section/surveys). Accessed 23 Nov. 2023.
+
+16. Kennedy, Lauren, et al. “Using Sex and Gender in Survey Adjustment.” ArXiv.org, 23 Mar. 2022, [https://arxiv.org/abs/2009.14401](https://arxiv.org/abs/2009.14401). Accessed 23 Nov. 2023.
+
+17. “Understanding Predictive Mean Matching and Regression Modeling in R.” Engineering Education (EngEd) Program | Section, [https://www.section.io/engineering-education/predictive-mean-matching](https://www.section.io/engineering-education/predictive-mean-matching). Accessed 23 Nov. 2023.
+
+18. Buuren, Stef van, and Karin Groothuis-Oudshoorn. “Mice: Multivariate Imputation by Chained Equations InR.” Journal of Statistical Software, vol. 45, no. 3, 2011,  [https://doi.org/10.18637/jss.v045.i03](https://doi.org/10.18637/jss.v045.i03). Accessed 23 Nov. 2023. 
+
+19. Wickham, Averick, et al.(2019). Welcome to the tidyverse. Journal of Open Source Software, 4(43), 1686.[https://tidyverse.tidyverse.org/articles/paper.html](https://tidyverse.tidyverse.org/articles/paper.html). Accessed 23 Nov. 2023.
+
+20. Robinson, David. “Broom: An R Package for Converting Statistical Analysis Objects into Tidy Data Frames.” ArXiv:1412.3565 [Stat], 19 Dec. 2014, [https://arxiv.org/abs/1412.3565](https://arxiv.org/abs/1412.3565). Accessed 23 Nov. 2023.
+
+21. Wickham, Hadley. “Reshaping Data with ThereshapePackage.” Journal of Statistical Software, vol. 21, no. 12, 2007, [https://doi.org/10.18637/jss.v021.i12](https://doi.org/10.18637/jss.v021.i12). Accessed 23 Nov. 2023.
+
+22. Nicolau, Jairo. “An Analysis of the 2002 Presidential Elections Using Logistic Regression.” Brazilian Political Science Review, vol. 1, 8 Sept. 2023, pp. 125–135, [https://doi.org/10.1590/1981-3826200700010006](https://doi.org/10.1590/1981-3826200700010006). Accessed 23 Nov. 2023.
+
+23. Kiewiet de Jonge, Chad P, et al. “Predicting State Presidential Election Results Using National Tracking Polls and Multilevel Regression with Poststratification (MRP).” Public Opinion Quarterly, vol. 82, no. 3, 2018, pp. 419–446, [https://doi.org/10.1093/poq/nfy023](https://doi.org/10.1093/poq/nfy023). Accessed 23 Nov. 2023.
+
+24. Fornacon-Wood, Isabella, et al. “Understanding the Differences between Bayesian and Frequentist Statistics.” International Journal of Radiation Oncology*Biology*Physics, vol. 112, no. 5, Apr. 2022, pp. 1076–1082, [https://doi.org/10.1016/j.ijrobp.2021.12.011](https://doi.org/10.1016/j.ijrobp.2021.12.011). Accessed 23 Nov. 2023.
+
+25. Bates, Douglas, et al. “Fitting Linear Mixed-Effects Models Using Lme4.” Journal of Statistical Software, vol. 67, no. 1, 2019, [https://doi.org/10.18637/jss.v067.i01](https://doi.org/10.18637/jss.v067.i01). Accessed 23 Nov. 2023.
+
+26. Xie Y (2023). knitr: A General-Purpose Package for Dynamic Report Generation in R. R package version 1.44, [https://yihui.org/knitr/](https://yihui.org/knitr/). Accessed 23 Nov. 2023.
+
+27. RStudio Team. (2020). *RStudio: Integrated Development for R*. RStudio, PBC, Boston, MA URL [http://www.rstudio.com/](http://www.rstudio.com/). Accessed 23 Nov. 2023.
+
+28. OpenAI. (2023). *ChatGPT (September 13 version) [Large language model]*. [https://chat.openai.com/chat](https://chat.openai.com/chat) Accessed 23 Nov. 2023.
+
+\newpage
+
+## Appendix
+
+### Generative AI Statement
+
+Our team used the following generative artificial intelligence (AI) tool: ChatGPT Version available on September 13, 2023 [28]. We declare that all the content presented in this study report is the result of my own original work. We have exclusively employed ChatGPT for the purposes of proofreading, refining, and refreshing on some statistical concepts.
+
+Here are some example prompts:
+
+- Prompt for refreshing statistical concepts: Explain the difference between frequentist approach and bayesian approach.
+
+- ChatGPT Answer: The frequentist approach to statistics treats probability as the long-run frequency of events, focusing on estimating fixed parameters based on observed data and making inferences about those parameters. In contrast, the Bayesian approach treats probability as a measure of belief or uncertainty, incorporating prior knowledge and updating beliefs based on observed data to obtain a posterior distribution for parameters. Frequentists view parameters as fixed, unknown constants, while Bayesians treat them as random variables with associated probability distributions. Bayesian methods explicitly incorporate prior information, making them more subjective, while frequentist methods are often perceived as more objective. The interpretation of probability, handling of uncertainty, and the role of prior knowledge are key distinctions between the two approaches.
+
+- Prompt for proofreading and refining: From missing values in census data table,  we can easily observe that missing values only exist in Marital Status and Born in Canada. There are 7 missing values for Marital Status, which are about 0.03% of the overall data. There are 148 missing values for Born in Canada, which are about 0.73% of the overall data. Therefore, the missing values in census data won’t have a significant impact on our analysis, but we still impute them for completeness.
+
+- ChatGPT Answer: Upon scrutinizing the census data table, it becomes apparent that missing values are confined to the variables of Marital Status and Born in Canada. Specifically, there are 7 missing values for Marital Status, constituting approximately 0.03% of the overall dataset, and 148 missing values for Born in Canada, accounting for around 0.73% of the entire dataset. While these percentages are relatively small, representing a minor fraction of the data, we acknowledge the importance of completeness in our analysis.
+
+### Supplementary Materials
+
+```{r, echo=FALSE}
+ggplot(survey_data_cleaned_nomissing, aes(x=age, y=vote_liberal)) +
+  geom_point() + labs(x="Age", y="Vote for Liberal Party", title="Figure 3: Check Outilers: The Distribution of Age")
+```
+
